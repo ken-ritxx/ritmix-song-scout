@@ -166,8 +166,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const iv = setInterval(() => {
       const p = ytRef.current;
       if (p?.getCurrentTime) {
-        setProgress(p.getCurrentTime() || 0);
-        setDuration(p.getDuration() || 0);
+        const pos = p.getCurrentTime() || 0;
+        const dur = p.getDuration() || 0;
+        setProgress(pos);
+        setDuration(dur);
+        // Keeps the lock-screen / notification scrubber in step with playback.
+        if ("mediaSession" in navigator && navigator.mediaSession.playbackState === "playing") {
+          try {
+            if (dur > 0) navigator.mediaSession.setPositionState({ duration: dur, position: Math.min(pos, dur), playbackRate: 1 });
+          } catch {}
+        }
       }
     }, 500);
     return () => clearInterval(iv);
@@ -191,7 +199,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           title: t.title,
           artist: t.artist,
           album: t.album ?? "",
-          artwork: [{ src: t.thumb, sizes: "400x400" }],
+          artwork: [
+            { src: t.thumb, sizes: "400x400", type: "image/jpeg" },
+            { src: t.thumb.replace(/=w\d+-h\d+/, "=w800-h800"), sizes: "800x800", type: "image/jpeg" },
+          ],
         });
       }
     },
@@ -251,6 +262,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       wantPlay.current = false;
       ytRef.current?.pauseVideo?.();
       setPlaying(false);
+    });
+    navigator.mediaSession.setActionHandler("seekto", (d) => {
+      if (typeof d.seekTime === "number") ytRef.current?.seekTo?.(d.seekTime, true);
     });
   });
 

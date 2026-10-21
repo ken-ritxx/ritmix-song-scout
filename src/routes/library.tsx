@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
-import { createFileRoute } from "@tanstack/react-router";
-import { Download, Heart, ListMusic, Play, Plus, Trash2 } from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { Download, Heart, ListMusic, Play, Plus } from "lucide-react";
 import { useState } from "react";
 import { TrackRow } from "@/components/TrackRow";
 import { usePlayer } from "@/lib/player";
@@ -22,13 +22,10 @@ export const Route = createFileRoute("/library")({
 
 function Library() {
   const p = usePlayer();
-  const [sel, setSel] = useState<string>("liked");
   const [name, setName] = useState("");
   const [spUrl, setSpUrl] = useState("");
   const [importing, setImporting] = useState(false);
   const [msg, setMsg] = useState("");
-  const pl = p.playlists.find((x) => x.id === sel);
-  const tracks = sel === "liked" ? p.liked : (pl?.tracks ?? []);
   return (
     <div>
       <h1 className="font-display text-3xl font-bold">Your Library</h1>
@@ -74,43 +71,63 @@ function Library() {
           <Plus className="h-4 w-4" /> Create
         </Button>
       </form>
-      <div className="no-scrollbar mt-4 flex gap-2 overflow-x-auto">
-        <Chip active={sel === "liked"} onClick={() => setSel("liked")}>
-          <Heart className="h-4 w-4" /> Liked ({p.liked.length})
-        </Chip>
-        {p.playlists.map((x) => (
-          <Chip key={x.id} active={sel === x.id} onClick={() => setSel(x.id)}>
-            <ListMusic className="h-4 w-4" /> {x.name} ({x.tracks.length})
-          </Chip>
-        ))}
-      </div>
-      <div className="mt-6 flex items-center gap-3">
-        <h2 className="flex-1 font-display text-xl font-bold">{sel === "liked" ? "Liked songs" : pl?.name}</h2>
-        {tracks.length > 0 && (
-          <Button variant="ghost" onClick={() => { const first = tracks[0]; if (first) p.playTrack(first, tracks); }} className="grid h-11 w-11 place-items-center rounded-full bg-gradient-brand text-primary-foreground shadow-glow" aria-label="Play all">
+
+      {p.playlists.length > 0 && (
+        <section className="mt-8">
+          <h2 className="mb-3 font-display text-xl font-bold">Playlists</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {p.playlists.map((x) => (
+              <Link
+                key={x.id}
+                to="/playlist/$id"
+                params={{ id: x.id }}
+                className="glass-surface group flex items-center gap-3 rounded-2xl p-3 transition hover:bg-surface-hover"
+              >
+                <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-muted">
+                  {x.tracks[0] ? (
+                    <img src={x.tracks[0].thumb} alt="" className="h-full w-full object-cover" loading="lazy" />
+                  ) : (
+                    <div className="grid h-full w-full place-items-center bg-gradient-brand">
+                      <ListMusic className="h-5 w-5 text-primary-foreground" />
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-semibold">{x.name}</div>
+                  <div className="truncate text-xs text-muted-foreground">{x.tracks.length} songs</div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <div className="mt-8 flex items-center gap-3">
+        <h2 className="flex-1 font-display text-xl font-bold">Liked songs</h2>
+        {p.liked.length > 0 && (
+          <Button
+            variant="ghost"
+            onClick={() => {
+              const first = p.liked[0];
+              if (first) p.playTrack(first, p.liked);
+            }}
+            className="grid h-11 w-11 place-items-center rounded-full bg-gradient-brand text-primary-foreground shadow-glow"
+            aria-label="Play all liked songs"
+          >
             <Play className="h-5 w-5 fill-current" />
-          </Button>
-        )}
-        {pl && (
-          <Button variant="ghost" onClick={() => { p.deletePlaylist(pl.id); setSel("liked"); }} className="p-2 text-muted-foreground" aria-label="Delete playlist">
-            <Trash2 className="h-5 w-5" />
           </Button>
         )}
       </div>
       <div className="mt-3 space-y-1">
-        {tracks.length === 0 && <p className="text-muted-foreground">Nothing here yet — search and add songs.</p>}
-        {tracks.map((t) => (
-          <TrackRow key={t.id} t={t} list={tracks} onRemove={pl ? () => p.removeFromPlaylist(pl.id, t.id) : undefined} />
+        {p.liked.length === 0 && (
+          <p className="flex items-center gap-2 text-muted-foreground">
+            <Heart className="h-4 w-4" /> No liked songs yet — search and tap the heart.
+          </p>
+        )}
+        {p.liked.map((t) => (
+          <TrackRow key={t.id} t={t} list={p.liked} />
         ))}
       </div>
     </div>
-  );
-}
-
-function Chip({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) {
-  return (
-    <Button variant="ghost" onClick={onClick} className={`flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm ${active ? "border-transparent bg-gradient-brand text-primary-foreground" : "glass-surface"}`}>
-      {children}
-    </Button>
   );
 }
