@@ -108,5 +108,5 @@ cd <repository-name>
 npm i
 npm run dev
 ```
-Deploy update latest
+Deploy update latest version2
 
