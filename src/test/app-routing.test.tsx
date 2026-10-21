@@ -14,4 +14,12 @@ describe("App routing", () => {
 
     expect(matches.at(-1)?.routeId).not.toBe(rootRouteId);
   });
+
+  it("gives each playlist its own screen at /playlist/$id", () => {
+    const router = createRouter({ routeTree, context: { queryClient: new QueryClient() } });
+
+    const matches = router.matchRoutes("/playlist/abc123");
+
+    expect(matches.at(-1)?.fullPath).toBe("/playlist/$id");
+  });
 });
