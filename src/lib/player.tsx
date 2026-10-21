@@ -84,9 +84,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [shuffle, setShuffle] = useStored("rp.shuffle", false);
   const [repeat, setRepeat] = useStored<"off" | "all" | "one">("rp.repeat", "off");
   const nextRef = useRef<() => void>(() => {});
+
   // Tracks whether the user intends music to play, so we can fight
   // the browser auto-pausing the player when the screen is off / tab hidden.
   const wantPlay = useRef(false);
+
   // Silent looping <audio> keeps Android browsers/WebViews treating the page as
   // an active media session, so the tab isn't frozen when the screen is off.
   const keepAlive = useRef<HTMLAudioElement | null>(null);
@@ -107,7 +109,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (on) keepAlive.current.play().catch(() => {});
     else keepAlive.current.pause();
   };
-
 
   useEffect(() => {
     const resume = () => {
@@ -138,18 +139,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         events: {
           onReady: () => setReady(true),
           onStateChange: (e: any) => {
-            if (e.data === 1) setPlaying(true);
+            if (e.data === 1) {
+              setPlaying(true);
+              keep(true);
+            }
             if (e.data === 2) {
-              // Paused by the browser in background, not by the user → resume
+              // Paused by browser background policy → try to resume if user wants play
               if (wantPlay.current && document.hidden) {
                 setTimeout(() => ytRef.current?.playVideo?.(), 100);
                 return;
               }
               setPlaying(false);
+              keep(false);
             }
-            if (e.data === 0) nextRef.current();
+            if (e.data === 0) {
+              nextRef.current();
+            }
             if ("mediaSession" in navigator) {
-              navigator.mediaSession.playbackState = e.data === 1 ? "playing" : e.data === 2 ? "paused" : navigator.mediaSession.playbackState;
+              navigator.mediaSession.playbackState =
+                e.data === 1 ? "playing" : e.data === 2 ? "paused" : navigator.mediaSession.playbackState;
             }
           },
           onError: () => nextRef.current(),
@@ -173,7 +181,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // Keeps the lock-screen / notification scrubber in step with playback.
         if ("mediaSession" in navigator && navigator.mediaSession.playbackState === "playing") {
           try {
-            if (dur > 0) navigator.mediaSession.setPositionState({ duration: dur, position: Math.min(pos, dur), playbackRate: 1 });
+            if (dur > 0)
+              navigator.mediaSession.setPositionState({
+                duration: dur,
+                position: Math.min(pos, dur),
+                playbackRate: 1,
+              });
           } catch {}
         }
       }
@@ -192,6 +205,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (q) setQueue(q);
       else setQueue((old) => (old.some((o) => o.id === t.id) ? old : [...old, t]));
       wantPlay.current = true;
+      keep(true);
       ytRef.current?.loadVideoById?.(t.id);
       setPlaying(true);
       if ("mediaSession" in navigator) {
@@ -221,7 +235,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       searchSongs({ data: { q: `${current.title} ${artist} radio` } }).catch(() => []),
       searchSongs({ data: { q: `songs like ${artist}` } }).catch(() => []),
     ]).then(([a, b]) => {
-      const found = ([...(a as Track[]), ...(b as Track[])]);
+      const found = [...(a as Track[]), ...(b as Track[])];
       setQueue((old) => {
         const seen = new Set(old.map((o) => o.id));
         const add = found.filter((f) => !seen.has(f.id) && (seen.add(f.id), true)).slice(0, 15);
@@ -234,7 +248,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!current || !queue.length) return;
     const i = queue.findIndex((q) => q.id === current.id);
     if (dir === 1 && !shuffle && repeat === "off" && i === queue.length - 1) return;
-    const idx = shuffle && queue.length > 1 ? (i + 1 + Math.floor(Math.random() * (queue.length - 1))) % queue.length : (i + dir + queue.length) % queue.length;
+    const idx =
+      shuffle && queue.length > 1
+        ? (i + 1 + Math.floor(Math.random() * (queue.length - 1))) % queue.length
+        : (i + dir + queue.length) % queue.length;
     const n = queue[idx];
     if (n) playTrack(n);
   };
@@ -256,10 +273,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     navigator.mediaSession.setActionHandler("previoustrack", prev);
     navigator.mediaSession.setActionHandler("play", () => {
       wantPlay.current = true;
+      keep(true);
       ytRef.current?.playVideo?.();
     });
     navigator.mediaSession.setActionHandler("pause", () => {
       wantPlay.current = false;
+      keep(false);
       ytRef.current?.pauseVideo?.();
       setPlaying(false);
     });
@@ -273,9 +292,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!p || !current) return;
     if (playing) {
       wantPlay.current = false;
+      keep(false);
       p.pauseVideo();
     } else {
       wantPlay.current = true;
+      keep(true);
       p.playVideo();
     }
     setPlaying(!playing);
@@ -296,7 +317,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setVolume: setVol,
     liked,
     isLiked: (id) => liked.some((l) => l.id === id),
-    toggleLike: (t) => setLiked((l) => (l.some((x) => x.id === t.id) ? l.filter((x) => x.id !== t.id) : [t, ...l])),
+    toggleLike: (t) =>
+      setLiked((l) => (l.some((x) => x.id === t.id) ? l.filter((x) => x.id !== t.id) : [t, ...l])),
     playlists,
     createPlaylist: (name, tracks = []) => setPlaylists((p) => [...p, { id: crypto.randomUUID(), name, tracks }]),
     deletePlaylist: (id) => setPlaylists((p) => p.filter((x) => x.id !== id)),
@@ -305,9 +327,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         p.map((x) => (x.id === pid && !x.tracks.some((y) => y.id === t.id) ? { ...x, tracks: [...x.tracks, t] } : x)),
       ),
     removeFromPlaylist: (pid, tid) =>
-      setPlaylists((p) => p.map((x) => (x.id === pid ? { ...x, tracks: x.tracks.filter((y) => y.id !== tid) } : x))),
+      setPlaylists((p) =>
+        p.map((x) => (x.id === pid ? { ...x, tracks: x.tracks.filter((y) => y.id !== tid) } : x)),
+      ),
     history,
-    addHistory: (q) => setHistory((h) => [q, ...h.filter((x) => x.toLowerCase() !== q.toLowerCase())].slice(0, 15)),
+    addHistory: (q) =>
+      setHistory((h) => [q, ...h.filter((x) => x.toLowerCase() !== q.toLowerCase())].slice(0, 15)),
     clearHistory: () => setHistory([]),
     recent,
     clearRecent: () => setRecent([]),
@@ -320,7 +345,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   return (
     <PlayerCtx.Provider value={value}>
       {children}
-      <div className="pointer-events-none fixed -left-[9999px] top-0 h-px w-px overflow-hidden" aria-hidden>
+      {/* 
+        On-screen position (bottom-0 left-0 with 0.001 opacity) ensures mobile browsers 
+        do NOT treat the iframe as out-of-viewport and freeze audio execution.
+      */}
+      <div
+        className="pointer-events-none fixed bottom-0 left-0 h-px w-px overflow-hidden opacity-[0.001]"
+        aria-hidden
+      >
         <div id="yt-hidden-player" />
       </div>
     </PlayerCtx.Provider>
