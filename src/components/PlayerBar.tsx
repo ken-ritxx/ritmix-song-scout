@@ -111,7 +111,7 @@ export function PlayerBar() {
                 </div>
                 {p.queue.map((q) => (
                   <Button key={q.id} variant="ghost" onClick={() => p.playTrack(q)} className="h-auto w-full justify-start gap-3 overflow-hidden px-0 py-2 text-left">
-                    <img src={q.thumb} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
+                    <img src={q.thumb} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" onError={(e) => { e.currentTarget.src = `https://i.ytimg.com/vi/${q.id}/hqdefault.jpg`; }} />
                     <div className="min-w-0 flex-1">
                       <div className={`truncate ${q.id === t.id ? "text-accent-glow" : ""}`}>{q.title}</div>
                       <div className="truncate text-sm text-muted-foreground">{q.artist}{q.duration ? ` • ${q.duration}` : ""}</div>
