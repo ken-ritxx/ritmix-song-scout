@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, Heart, ListMusic, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume2, VolumeX } from "lucide-react";
+import { ChevronDown, Heart, ListMusic, ListPlus, Menu, MoreVertical, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume2, VolumeX } from "lucide-react";
 import { fmt, usePlayer } from "@/lib/player";
+
+const chips = ["All", "Familiar", "Popular", "Discover", "Lyrics"] as const;
 
 export function PlayerBar() {
   const p = usePlayer();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"next" | "lyrics">("next");
+  const [chip, setChip] = useState<(typeof chips)[number]>("All");
+  const [menu, setMenu] = useState(false);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => setSaved(false), [p.current?.id]);
   if (!p.current) return null;
   const t = p.current;
   const big = t.thumb.replace(/=w\d+-h\d+/, "=w800-h800");
@@ -22,110 +28,113 @@ export function PlayerBar() {
       onChange={(e) => p.seek(Number(e.target.value))} className="range w-full" aria-label="Seek" />
   );
 
-  if (open)
+  if (open) {
+    const recentIds = new Set(p.recent.map((x) => x.id));
+    const fam = (q: typeof t) => p.isLiked(q.id) || recentIds.has(q.id);
+    const shown = chip === "Familiar" ? p.queue.filter(fam)
+      : chip === "Popular" ? p.queue.filter((q) => q.artist === t.artist || p.isLiked(q.id))
+      : chip === "Discover" ? p.queue.filter((q) => !fam(q)) : p.queue;
     return (
       <div className="fixed inset-0 z-50 overflow-y-auto bg-background">
         <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
-          <img src={big} alt="" className="h-full w-full scale-125 object-cover opacity-35 blur-3xl" />
-          <div className="absolute inset-0 bg-gradient-to-b from-background/70 via-background/80 to-background" />
+          <img src={big} alt="" className="h-full w-full scale-125 object-cover opacity-30 blur-3xl" />
+          <div className="absolute inset-0 bg-background/70" />
         </div>
-
-        <div className="relative mx-auto flex min-h-full max-w-md flex-col px-6 pb-10 pt-3">
-          <div className="flex items-center justify-between">
-            <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close Now Playing">
-              <ChevronDown className="h-7 w-7" />
-            </Button>
-            <span className="text-[11px] uppercase tracking-normal text-muted-foreground">Now playing</span>
-            <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close" className="opacity-0" tabIndex={-1}>
-              <ChevronDown className="h-7 w-7" />
-            </Button>
-          </div>
-
-          <div className="mt-4 flex-1">
-            <div className="relative mx-auto aspect-square w-full max-w-[min(20rem,72vw)] overflow-hidden rounded-[2rem] bg-muted shadow-glow ring-1 ring-border transition duration-500"
-              style={{ transform: p.playing ? "scale(1)" : "scale(0.94)" }}>
-              <img src={big} alt="" className="h-full w-full object-cover" />
-            </div>
-          </div>
-
-          <div className="mt-6 flex items-start gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="truncate font-display text-2xl font-bold leading-tight">{t.title}</div>
-              <div className="mt-1 truncate text-base text-muted-foreground">
-                {t.artist}
-                {t.album ? ` · ${t.album}` : ""}
+        <div className="relative mx-auto max-w-md pb-10">
+          <div className="relative aspect-square w-full overflow-hidden">
+            <img src={big} alt="" className="h-full w-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-b from-background/50 via-transparent to-background" />
+            <div className="absolute inset-x-0 top-0 flex items-center justify-between p-3">
+              <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close Now Playing"><ChevronDown className="h-7 w-7" /></Button>
+              <div className="relative">
+                <Button variant="ghost" size="icon" onClick={() => setMenu(!menu)} aria-label="Options"><MoreVertical className="h-6 w-6" /></Button>
+                {menu && (
+                  <div className="absolute right-0 top-11 z-10 w-48 rounded-2xl border bg-popover/95 p-1 backdrop-blur-xl shadow-glow">
+                    <Button variant="ghost" className="w-full justify-start" onClick={() => { p.toggleLike(t); setMenu(false); }}>
+                      <Heart className={`h-4 w-4 ${p.isLiked(t.id) ? "fill-accent-glow text-accent-glow" : ""}`} /> {p.isLiked(t.id) ? "Unlike" : "Like"}
+                    </Button>
+                    <Button variant="ghost" className="w-full justify-start" onClick={() => { setTab(tab === "lyrics" ? "next" : "lyrics"); setMenu(false); }}>
+                      <ListMusic className="h-4 w-4" /> {tab === "lyrics" ? "Show Up next" : "Show lyrics"}
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
-            <Button variant="ghost" size="icon" onClick={() => p.toggleLike(t)} aria-label={p.isLiked(t.id) ? "Remove from liked" : "Add to liked"} className="shrink-0">
-              <Heart className={`h-6 w-6 transition ${p.isLiked(t.id) ? "fill-accent-glow text-accent-glow" : "text-muted-foreground"}`} />
-            </Button>
+            <div className="absolute inset-x-0 bottom-0 flex items-end gap-2 px-6 pb-2">
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-display text-3xl font-bold leading-tight">{t.title}</div>
+                <div className="truncate text-lg text-muted-foreground">{t.artist}</div>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => p.toggleLike(t)} aria-label="Like" className="shrink-0">
+                <Heart className={`h-6 w-6 ${p.isLiked(t.id) ? "fill-accent-glow text-accent-glow" : "text-muted-foreground"}`} />
+              </Button>
+            </div>
           </div>
-
-          <div className="mt-5">
-            <div className="relative h-6">
-              <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full bg-surface-hover">
+          <div className="px-6">
+            <div className="relative mt-4 h-6">
+              <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-surface-hover">
                 <div className="h-full rounded-full bg-gradient-brand" style={{ width: `${pct}%` }} />
               </div>
-              <div className="pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground shadow-glow"
-                style={{ left: `${pct}%` }} />
-              <input type="range" min={0} max={p.duration || 1} value={p.progress}
-                onChange={(e) => p.seek(Number(e.target.value))}
+              <input type="range" min={0} max={p.duration || 1} value={p.progress} onChange={(e) => p.seek(Number(e.target.value))}
                 className="absolute inset-0 w-full cursor-pointer opacity-0" aria-label="Seek" />
             </div>
-            <div className="mt-1 flex justify-between text-xs tabular-nums text-muted-foreground">
-              <span>{fmt(p.progress)}</span>
-              <span>-{fmt(Math.max(0, p.duration - p.progress))}</span>
+            <div className="flex justify-between text-sm tabular-nums text-muted-foreground">
+              <span>{fmt(p.progress)}</span><span>{fmt(p.duration)}</span>
             </div>
-          </div>
-
-          <div className="mt-4 flex items-center justify-between">
-            <Button variant="ghost" size="icon" onClick={p.toggleShuffle} aria-label="Shuffle" className={p.shuffle ? "text-accent-glow" : ""}>
-              <Shuffle className="h-5 w-5" />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={p.prev} aria-label="Previous">
-              <SkipBack className="h-8 w-8 fill-current" />
-            </Button>
-            <PlayBtn size="h-18 w-18" />
-            <Button variant="ghost" size="icon" onClick={p.next} aria-label="Next">
-              <SkipForward className="h-8 w-8 fill-current" />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={p.cycleRepeat} aria-label="Repeat" className={p.repeat !== "off" ? "text-accent-glow" : ""}>
-              {p.repeat === "one" ? <Repeat1 className="h-5 w-5" /> : <Repeat className="h-5 w-5" />}
-            </Button>
-          </div>
-
-          <div className="mt-6 flex gap-2">
-            {(["next", "lyrics"] as const).map((k) => (
-              <Button key={k} variant="ghost" onClick={() => setTab(k)}
-                className={`rounded-full px-5 ${tab === k ? "bg-foreground text-background hover:bg-foreground/90" : "bg-surface-hover"}`}>
-                {k === "next" ? "Up next" : "Lyrics"}
+            <div className="mt-4 flex items-center justify-between">
+              <Button variant="ghost" size="icon" onClick={p.toggleShuffle} aria-label="Shuffle" className={p.shuffle ? "text-accent-glow" : ""}><Shuffle className="h-6 w-6" /></Button>
+              <Button variant="ghost" size="icon" onClick={p.prev} aria-label="Previous"><SkipBack className="h-9 w-9 fill-current" /></Button>
+              <Button variant="brand" onClick={p.toggle} aria-label={p.playing ? "Pause" : "Play"} className="grid h-20 w-20 place-items-center rounded-full bg-gradient-brand text-primary-foreground shadow-glow">
+                {p.playing ? <Pause className="h-9 w-9 fill-current" /> : <Play className="h-9 w-9 fill-current" />}
               </Button>
-            ))}
-          </div>
-
-          <div className="mt-3">
-            {tab === "next" ? (
-              <div>
-                <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-normal text-muted-foreground">
-                  <ListMusic className="h-3.5 w-3.5" /> Queue · {p.queue.length}
-                </div>
-                {p.queue.map((q) => (
-                  <Button key={q.id} variant="ghost" onClick={() => p.playTrack(q)} className="h-auto w-full justify-start gap-3 overflow-hidden px-0 py-2 text-left">
-                    <img src={q.thumb} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" onError={(e) => { e.currentTarget.src = `https://i.ytimg.com/vi/${q.id}/hqdefault.jpg`; }} />
-                    <div className="min-w-0 flex-1">
-                      <div className={`truncate ${q.id === t.id ? "text-accent-glow" : ""}`}>{q.title}</div>
-                      <div className="truncate text-sm text-muted-foreground">{q.artist}{q.duration ? ` • ${q.duration}` : ""}</div>
-                    </div>
-                  </Button>
-                ))}
+              <Button variant="ghost" size="icon" onClick={p.next} aria-label="Next"><SkipForward className="h-9 w-9 fill-current" /></Button>
+              <Button variant="ghost" size="icon" onClick={p.cycleRepeat} aria-label="Repeat" className={p.repeat !== "off" ? "text-accent-glow" : ""}>
+                {p.repeat === "one" ? <Repeat1 className="h-6 w-6" /> : <Repeat className="h-6 w-6" />}
+              </Button>
+            </div>
+            <div className="mx-auto mt-6 h-1 w-16 rounded-full bg-muted-foreground/40" />
+            <div className="mt-6 flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-muted-foreground">Playing from</div>
+                <div className="truncate font-semibold">{t.title} mix</div>
               </div>
-            ) : (
-              <Lyrics />
-            )}
+              <Button variant="ghost" onClick={() => { p.createPlaylist(`${t.title} mix`, p.queue); setSaved(true); }}
+                className="h-11 shrink-0 rounded-full bg-surface-hover px-5">
+                <ListPlus className="h-5 w-5" /> {saved ? "Saved" : "Save"}
+              </Button>
+            </div>
+            <div className="-mx-6 mt-5 flex gap-2 overflow-x-auto px-6 pb-1">
+              {chips.map((k) => (
+                <Button key={k} variant="ghost" onClick={() => { setChip(k); setTab(k === "Lyrics" ? "lyrics" : "next"); }}
+                  className={`h-10 shrink-0 rounded-xl px-4 ${chip === k ? "bg-foreground text-background hover:bg-foreground/90" : "bg-surface-hover"}`}>
+                  {k}
+                </Button>
+              ))}
+            </div>
+            <div className="mt-3">
+              {tab === "next" ? (
+                <div>
+                  {shown.length === 0 && <p className="py-6 text-center text-muted-foreground">No songs here yet.</p>}
+                  {shown.map((q) => (
+                    <Button key={q.id} variant="ghost" onClick={() => p.playTrack(q)} className="h-auto w-full justify-start gap-3 overflow-hidden px-0 py-2 text-left">
+                      <img src={q.thumb} alt="" className="h-14 w-14 shrink-0 rounded-md object-cover" onError={(e) => { e.currentTarget.src = `https://i.ytimg.com/vi/${q.id}/hqdefault.jpg`; }} />
+                      <div className="min-w-0 flex-1">
+                        <div className={`truncate text-base ${q.id === t.id ? "text-accent-glow" : ""}`}>{q.title}</div>
+                        <div className="truncate text-sm text-muted-foreground">{q.artist}{q.duration ? ` • ${q.duration}` : ""}</div>
+                      </div>
+                      <Menu className="h-5 w-5 shrink-0 text-muted-foreground" />
+                    </Button>
+                  ))}
+                </div>
+              ) : (
+                <Lyrics />
+              )}
+            </div>
           </div>
         </div>
       </div>
     );
+  }
 
   return (
     <div className="fixed inset-x-0 bottom-16 z-40 glass-surface rounded-t-3xl px-3 pb-3 pt-2 md:bottom-3 md:left-64 md:right-4 md:rounded-3xl md:px-5">

@@ -1,5 +1,5 @@
 import { Link, useHydrated } from "@tanstack/react-router";
-import { Home, Library, ListMusic, Search } from "lucide-react";
+import { Home, Library, ListMusic, Search, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { usePlayer } from "@/lib/player";
 
@@ -41,7 +41,13 @@ export function Nav() {
             <span className="truncate">{openPl.name}</span>
           </Link>
         )}
+        <Link to="/library" aria-label="Profile" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-brand text-primary-foreground shadow-glow">
+          <UserRound className="h-5 w-5" />
+        </Link>
       </header>
+      <Link to="/library" aria-label="Profile" className="fixed right-5 top-4 z-30 hidden h-10 w-10 place-items-center rounded-full bg-gradient-brand text-primary-foreground shadow-glow md:grid">
+        <UserRound className="h-5 w-5" />
+      </Link>
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col gap-2 border-r bg-sidebar/55 p-5 backdrop-blur-xl md:flex">
         <Link to="/" className="mb-4 font-display text-2xl font-extrabold tracking-normal">
           <span className="text-gradient-brand">Ritxxx</span> Plays
