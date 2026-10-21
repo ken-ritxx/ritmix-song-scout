@@ -13,3 +13,4 @@
 - Liked songs, playlists, history and volume live in localStorage (no login by design).
 
 - Material-style surfaces use the shared glass-surface utility and semantic theme tokens; interactive controls use the shared Button variants to keep state and focus styling consistent.
+- Each playlist opens as its own route screen (/playlist/$id) instead of an in-page selection state, so browser Back and a shareable address work; playlist data still comes from localStorage.
