@@ -65,6 +65,46 @@ export const searchSongs = createServerFn({ method: "GET" })
   .inputValidator((d: { q: string }) => ({ q: String(d.q ?? "").slice(0, 200) }))
   .handler(async ({ data }): Promise<Track[]> => ytSearch(data.q));
 
+// Reads a public YouTube / YouTube Music playlist (first page, ~100 songs).
+export const importYouTubePlaylist = createServerFn({ method: "POST" })
+  .inputValidator((d: { url: string }) => ({ url: String(d.url ?? "").slice(0, 300) }))
+  .handler(async ({ data }): Promise<{ name: string; tracks: Track[] }> => {
+    const m = data.url.match(/[?&]list=([A-Za-z0-9_-]{10,})/) ?? data.url.match(/^(PL|OL|RD|UU|LL)[A-Za-z0-9_-]{8,}$/);
+    if (!m) throw new Error("Paste a YouTube playlist link");
+    const id = m[1] && m[0].includes("list=") ? m[1] : m[0];
+    const res = await fetch("https://music.youtube.com/youtubei/v1/browse?prettyPrint=false", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "https://music.youtube.com",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
+      },
+      body: JSON.stringify({
+        context: { client: { clientName: "WEB_REMIX", clientVersion: "1.20241023.01.00", hl: "en" } },
+        browseId: id.startsWith("VL") ? id : `VL${id}`,
+      }),
+    });
+    if (!res.ok) throw new Error("Playlist not found or private");
+    const json: any = await res.json();
+    const tracks: Track[] = [];
+    const walk = (o: any) => {
+      if (!o || typeof o !== "object") return;
+      if (o.musicResponsiveListItemRenderer) {
+        const t = parseItem(o.musicResponsiveListItemRenderer);
+        if (t && !tracks.some((x) => x.id === t.id)) tracks.push(t);
+        return;
+      }
+      for (const k in o) walk(o[k]);
+    };
+    walk(json?.contents);
+    if (!tracks.length) throw new Error("No songs found — is the playlist public?");
+    const hdr =
+      json?.contents?.twoColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents?.[0]
+        ?.musicResponsiveHeaderRenderer ?? json?.header?.musicDetailHeaderRenderer;
+    const name: string = hdr?.title?.runs?.map((r: any) => r.text).join("") || "YouTube playlist";
+    return { name, tracks };
+  });
+
 // Reads a public Spotify playlist via its embed page, then matches each song on YouTube Music.
 export const importSpotifyPlaylist = createServerFn({ method: "POST" })
   .inputValidator((d: { url: string }) => ({ url: String(d.url ?? "").slice(0, 300) }))

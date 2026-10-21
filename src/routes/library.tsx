@@ -4,7 +4,7 @@ import { Download, Heart, ListMusic, Play, Plus } from "lucide-react";
 import { useState } from "react";
 import { TrackRow } from "@/components/TrackRow";
 import { usePlayer } from "@/lib/player";
-import { importSpotifyPlaylist } from "@/lib/innertube.functions";
+import { importSpotifyPlaylist, importYouTubePlaylist } from "@/lib/innertube.functions";
 
 export const Route = createFileRoute("/library")({
   head: () => ({
@@ -37,7 +37,8 @@ function Library() {
           setImporting(true);
           setMsg("Importing… this can take up to a minute");
           try {
-            const r = await importSpotifyPlaylist({ data: { url: spUrl.trim() } });
+            const u = spUrl.trim();
+            const r = /youtu\.?be|list=/i.test(u) ? await importYouTubePlaylist({ data: { url: u } }) : await importSpotifyPlaylist({ data: { url: u } });
             p.createPlaylist(r.name, r.tracks);
             setMsg(`Added "${r.name}" with ${r.tracks.length} songs`);
             setSpUrl("");
@@ -48,10 +49,10 @@ function Library() {
           }
         }}
       >
-        <p className="font-display font-semibold">Import from Spotify</p>
-        <p className="text-sm text-muted-foreground">Paste a public Spotify playlist link (up to 100 songs).</p>
+        <p className="font-display font-semibold">Import from Spotify or YouTube</p>
+        <p className="text-sm text-muted-foreground">Paste a public Spotify or YouTube / YouTube Music playlist link (up to 100 songs).</p>
         <div className="mt-3 flex gap-2">
-          <input value={spUrl} onChange={(e) => setSpUrl(e.target.value)} placeholder="https://open.spotify.com/playlist/…" aria-label="Spotify playlist link" className="min-w-0 flex-1 rounded-full glass-surface px-4 py-2 outline-none focus:border-primary" />
+          <input value={spUrl} onChange={(e) => setSpUrl(e.target.value)} placeholder="Spotify or YouTube playlist link" aria-label="Playlist link" className="min-w-0 flex-1 rounded-full glass-surface px-4 py-2 outline-none focus:border-primary" />
           <Button variant="brand" type="submit" disabled={importing} className="h-auto rounded-full bg-gradient-brand px-4 py-2 font-semibold text-primary-foreground">
             <Download className="h-4 w-4" /> {importing ? "…" : "Import"}
           </Button>
