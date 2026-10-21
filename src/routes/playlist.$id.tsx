@@ -32,7 +32,7 @@ function PlaylistPage() {
   }, [pl]);
 
   const back = () => {
-    if (window.history.length > 1) router.history.goBack();
+    if (window.history.length > 1) router.history.back();
     else router.navigate({ to: "/library" });
   };
 
