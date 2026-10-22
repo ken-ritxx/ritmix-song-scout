@@ -223,7 +223,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  // Auto-fill "Up next" with similar songs when the queue is about to run out.
+  // Auto-fill "Up next" with songs matching the current track's mood,
+  // so a sad song is followed by more sad songs, a party track by party tracks, etc.
   const filling = useRef("");
   useEffect(() => {
     if (!current) return;
@@ -231,9 +232,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (queue.length - 1 - i >= 5 || filling.current === current.id) return;
     filling.current = current.id;
     const artist = current.artist.split(/,|&/)[0]!.trim();
+    const text = `${current.title} ${current.artist} ${current.album ?? ""}`;
+    const MOODS: [RegExp, string][] = [
+      [/sad|dard|dil|judai|tanha|alone|lonely|cry|rona|roken|heartbreak|bewafa|udaas|gham|miss you|tears|goodbye/i, "sad songs"],
+      [/love|pyaar|pyar|ishq|mohabbat|romantic|romance|sanam|jaan|sweetheart|valentine/i, "romantic love songs"],
+      [/party|dance|club|dj|remix|edm|bounce|nach/i, "party dance hits"],
+      [/lofi|lo-fi|chill|relax|calm|sleep|neend|rain|acoustic|unplugged/i, "lofi chill songs"],
+      [/gym|workout|pump|beast|power|motivat/i, "gym workout songs"],
+      [/phonk|drift/i, "phonk songs"],
+      [/rap|hip.?hop|trap|desi hip/i, "hip hop rap songs"],
+      [/sufi|qawwali|devotional|bhajan|spiritual/i, "sufi songs"],
+      [/rock|metal|anthem/i, "rock songs"],
+      [/bollywood|hindi|filmi/i, "bollywood songs"],
+      [/punjabi|bhangra/i, "punjabi hits"],
+    ];
+    const mood = MOODS.find(([re]) => re.test(text))?.[1];
     Promise.all([
-      searchSongs({ data: { q: `${current.title} ${artist} radio` } }).catch(() => []),
-      searchSongs({ data: { q: `songs like ${artist}` } }).catch(() => []),
+      searchSongs({ data: { q: mood ? `${artist} ${mood}` : `${current.title} ${artist} radio` } }).catch(() => []),
+      searchSongs({ data: { q: mood ?? `songs like ${artist}` } }).catch(() => []),
     ]).then(([a, b]) => {
       const found = [...(a as Track[]), ...(b as Track[])];
       setQueue((old) => {
