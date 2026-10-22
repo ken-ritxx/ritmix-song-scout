@@ -40,27 +40,28 @@ export function PlayerBar() {
           <img src={big} alt="" className="h-full w-full scale-125 object-cover opacity-30 blur-3xl" />
           <div className="absolute inset-0 bg-background/70" />
         </div>
-        <div className="relative mx-auto max-w-md pb-10">
-          <div className="relative aspect-square w-full overflow-hidden">
-            <img src={big} alt="" className="h-full w-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-b from-background/50 via-transparent to-background" />
-            <div className="absolute inset-x-0 top-0 flex items-center justify-between p-3">
-              <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close Now Playing"><ChevronDown className="h-7 w-7" /></Button>
-              <div className="relative">
-                <Button variant="ghost" size="icon" onClick={() => setMenu(!menu)} aria-label="Options"><MoreVertical className="h-6 w-6" /></Button>
-                {menu && (
-                  <div className="absolute right-0 top-11 z-10 w-48 rounded-2xl border bg-popover/95 p-1 backdrop-blur-xl shadow-glow">
-                    <Button variant="ghost" className="w-full justify-start" onClick={() => { p.toggleLike(t); setMenu(false); }}>
-                      <Heart className={`h-4 w-4 ${p.isLiked(t.id) ? "fill-accent-glow text-accent-glow" : ""}`} /> {p.isLiked(t.id) ? "Unlike" : "Like"}
-                    </Button>
-                    <Button variant="ghost" className="w-full justify-start" onClick={() => { setTab(tab === "lyrics" ? "next" : "lyrics"); setMenu(false); }}>
-                      <ListMusic className="h-4 w-4" /> {tab === "lyrics" ? "Show Up next" : "Show lyrics"}
-                    </Button>
-                  </div>
-                )}
-              </div>
+        <div className="relative mx-auto max-w-md pb-10 lg:grid lg:max-w-6xl lg:grid-cols-[minmax(0,480px)_minmax(0,1fr)] lg:items-start lg:gap-12 lg:px-10 lg:pt-14">
+          {/* Header: floats over artwork on mobile, sits as a normal row on desktop */}
+          <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between p-3 lg:static lg:col-span-2 lg:p-0 lg:pb-8">
+            <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close Now Playing"><ChevronDown className="h-7 w-7" /></Button>
+            <div className="relative">
+              <Button variant="ghost" size="icon" onClick={() => setMenu(!menu)} aria-label="Options"><MoreVertical className="h-6 w-6" /></Button>
+              {menu && (
+                <div className="absolute right-0 top-11 z-10 w-48 rounded-2xl border bg-popover/95 p-1 backdrop-blur-xl shadow-glow">
+                  <Button variant="ghost" className="w-full justify-start" onClick={() => { p.toggleLike(t); setMenu(false); }}>
+                    <Heart className={`h-4 w-4 ${p.isLiked(t.id) ? "fill-accent-glow text-accent-glow" : ""}`} /> {p.isLiked(t.id) ? "Unlike" : "Like"}
+                  </Button>
+                  <Button variant="ghost" className="w-full justify-start" onClick={() => { setTab(tab === "lyrics" ? "next" : "lyrics"); setMenu(false); }}>
+                    <ListMusic className="h-4 w-4" /> {tab === "lyrics" ? "Show Up next" : "Show lyrics"}
+                  </Button>
+                </div>
+              )}
             </div>
-            <div className="absolute inset-x-0 bottom-0 flex items-end gap-2 px-6 pb-2">
+          </div>
+          <div className="relative aspect-square w-full overflow-hidden lg:rounded-3xl lg:shadow-glow">
+            <img src={big} alt="" className="h-full w-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-b from-background/50 via-transparent to-background lg:hidden" />
+            <div className="absolute inset-x-0 bottom-0 flex items-end gap-2 px-6 pb-2 lg:hidden">
               <div className="min-w-0 flex-1">
                 <div className="truncate font-display text-3xl font-bold leading-tight">{t.title}</div>
                 <div className="truncate text-lg text-muted-foreground">{t.artist}</div>
@@ -70,7 +71,17 @@ export function PlayerBar() {
               </Button>
             </div>
           </div>
-          <div className="px-6">
+          <div className="px-6 lg:px-0">
+            {/* Title block: on desktop it lives beside the artwork, not over it */}
+            <div className="hidden items-end gap-3 lg:flex">
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-display text-4xl font-bold leading-tight">{t.title}</div>
+                <div className="truncate text-xl text-muted-foreground">{t.artist}</div>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => p.toggleLike(t)} aria-label="Like" className="shrink-0">
+                <Heart className={`h-7 w-7 ${p.isLiked(t.id) ? "fill-accent-glow text-accent-glow" : "text-muted-foreground"}`} />
+              </Button>
+            </div>
             <div className="relative mt-4 h-6">
               <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-surface-hover">
                 <div className="h-full rounded-full bg-gradient-brand" style={{ width: `${pct}%` }} />
