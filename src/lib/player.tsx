@@ -1,6 +1,8 @@
 import type React from "react";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { searchSongs, type Track } from "./innertube.functions";
+import { useRecommender } from "@/hooks/useRecommender";
+import { describeTrack, finishEvent, relatedQuery, type Track as RecommendedTrack, type PlayEvent, type Taste } from "./recommender";
 
 export type Playlist = { id: string; name: string; tracks: Track[] };
 
@@ -34,6 +36,14 @@ type Ctx = {
   toggleShuffle: () => void;
   repeat: "off" | "all" | "one";
   cycleRepeat: () => void;
+  sessionQueue: RecommendedTrack[];
+  taste: Taste;
+  playEvents: PlayEvent[];
+  catalog: RecommendedTrack[];
+  recommendationsReady: boolean;
+  addCandidates: (tracks: Track[], hint?: string) => void;
+  onboardingCount: number;
+  onboard: (track: Track, liked: boolean) => void;
 };
 
 // Keep one context instance across hot reloads so provider and hooks always match.
@@ -84,6 +94,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [shuffle, setShuffle] = useStored("rp.shuffle", false);
   const [repeat, setRepeat] = useStored<"off" | "all" | "one">("rp.repeat", "off");
   const nextRef = useRef<() => void>(() => {});
+  const rec = useRecommender(liked, recent, current);
+  const recRef = useRef(rec);
+  recRef.current = rec;
+  const activeRef = useRef<Track | null>(null);
+  const pendingStart = useRef<"play" | "replay" | "resume" | null>(null);
+  const finished = useRef(false);
+  const finishCurrent = () => {
+    const track = activeRef.current;
+    if (!track || finished.current) return;
+    const position = ytRef.current?.getCurrentTime?.() || 0;
+    const total = ytRef.current?.getDuration?.() || 0;
+    recRef.current.record(track, finishEvent(position, total), position, total);
+    finished.current = true;
+  };
 
   // Tracks whether the user intends music to play, so we can fight
   // the browser auto-pausing the player when the screen is off / tab hidden.
@@ -140,6 +164,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           onReady: () => setReady(true),
           onStateChange: (e: any) => {
             if (e.data === 1) {
+              const track = activeRef.current;
+              if (track && pendingStart.current) {
+                recRef.current.record(track, pendingStart.current, ytRef.current?.getCurrentTime?.() || 0, ytRef.current?.getDuration?.() || 0);
+                pendingStart.current = null;
+              }
               setPlaying(true);
               keep(true);
             }
@@ -153,6 +182,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               keep(false);
             }
             if (e.data === 0) {
+              const track = activeRef.current;
+              if (track && !finished.current) {
+                const total = ytRef.current?.getDuration?.() || 0;
+                recRef.current.record(track, "complete", total, total);
+                finished.current = true;
+              }
               nextRef.current();
             }
             if ("mediaSession" in navigator) {
@@ -160,7 +195,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                 e.data === 1 ? "playing" : e.data === 2 ? "paused" : navigator.mediaSession.playbackState;
             }
           },
-          onError: () => nextRef.current(),
+          onError: () => {
+            const track = activeRef.current;
+            if (track) recRef.current.record(track, "error", 0, 0);
+            finished.current = true;
+            pendingStart.current = null;
+            nextRef.current();
+          },
         },
       });
     };
@@ -200,14 +241,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const playTrack = useCallback(
     (t: Track, q?: Track[]) => {
+      const replay = activeRef.current?.id === t.id;
+      if (!replay) finishCurrent();
+      activeRef.current = t;
+      finished.current = false;
+      pendingStart.current = replay ? "replay" : "play";
+      recRef.current.addCandidates(q ?? [t]);
       setCurrent(t);
+      setProgress(0);
+      setDuration(0);
       setRecent((r) => [t, ...r.filter((x) => x.id !== t.id)].slice(0, 20));
       if (q) setQueue(q);
       else setQueue((old) => (old.some((o) => o.id === t.id) ? old : [...old, t]));
       wantPlay.current = true;
       keep(true);
       ytRef.current?.loadVideoById?.(t.id);
-      setPlaying(true);
+      setPlaying(false);
       if ("mediaSession" in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
           title: t.title,
@@ -223,61 +272,52 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  // Auto-fill "Up next" with songs matching the current track's mood,
-  // so a sad song is followed by more sad songs, a party track by party tracks, etc.
-  const filling = useRef("");
+  // Search enriches a separate candidate catalog, never the explicit playlist.
+  // Cancellation prevents a late response for an old song from changing its mix.
   useEffect(() => {
     if (!current) return;
-    const i = queue.findIndex((q) => q.id === current.id);
-    if (queue.length - 1 - i >= 5 || filling.current === current.id) return;
-    filling.current = current.id;
-    const artist = current.artist.split(/,|&/)[0]!.trim();
-    const text = `${current.title} ${current.artist} ${current.album ?? ""}`;
-    const MOODS: [RegExp, string][] = [
-      [/sad|dard|dil|judai|tanha|alone|lonely|cry|rona|roken|heartbreak|bewafa|udaas|gham|miss you|tears|goodbye/i, "sad songs"],
-      [/love|pyaar|pyar|ishq|mohabbat|romantic|romance|sanam|jaan|sweetheart|valentine/i, "romantic love songs"],
-      [/party|dance|club|dj|remix|edm|bounce|nach/i, "party dance hits"],
-      [/lofi|lo-fi|chill|relax|calm|sleep|neend|rain|acoustic|unplugged/i, "lofi chill songs"],
-      [/gym|workout|pump|beast|power|motivat/i, "gym workout songs"],
-      [/phonk|drift/i, "phonk songs"],
-      [/rap|hip.?hop|trap|desi hip/i, "hip hop rap songs"],
-      [/sufi|qawwali|devotional|bhajan|spiritual/i, "sufi songs"],
-      [/rock|metal|anthem/i, "rock songs"],
-      [/bollywood|hindi|filmi/i, "bollywood songs"],
-      [/punjabi|bhangra/i, "punjabi hits"],
-    ];
-    const mood = MOODS.find(([re]) => re.test(text))?.[1];
+    let cancelled = false;
+    const query = relatedQuery(describeTrack(current));
     Promise.all([
-      searchSongs({ data: { q: mood ? `${artist} ${mood}` : `${current.title} ${artist} radio` } }).catch(() => []),
-      searchSongs({ data: { q: mood ?? `songs like ${artist}` } }).catch(() => []),
+      searchSongs({ data: { q: query.artist } }).catch(() => []),
+      searchSongs({ data: { q: query.mood } }).catch(() => []),
     ]).then(([a, b]) => {
-      const found = [...(a as Track[]), ...(b as Track[])];
-      setQueue((old) => {
-        const seen = new Set(old.map((o) => o.id));
-        const add = found.filter((f) => !seen.has(f.id) && (seen.add(f.id), true)).slice(0, 15);
-        return [...old, ...add];
-      });
+      if (!cancelled) recRef.current.addCandidates([...a, ...b], query.mood);
     });
-  }, [current, queue]);
+    return () => { cancelled = true; };
+  }, [current?.id]);
+
+  useEffect(() => {
+    if (ready && current && pendingStart.current) ytRef.current?.loadVideoById?.(current.id);
+  }, [ready]);
 
   const step = (dir: 1 | -1) => {
     if (!current || !queue.length) return;
     const i = queue.findIndex((q) => q.id === current.id);
-    if (dir === 1 && !shuffle && repeat === "off" && i === queue.length - 1) return;
+    if (dir === 1 && (shuffle || (repeat === "off" && i === queue.length - 1))) {
+      const recommendation = recRef.current.queue[0];
+      if (recommendation) playTrack(recommendation, [recommendation]);
+      else { wantPlay.current = false; setPlaying(false); keep(false); }
+      return;
+    }
     const idx =
-      shuffle && queue.length > 1
-        ? (i + 1 + Math.floor(Math.random() * (queue.length - 1))) % queue.length
-        : (i + dir + queue.length) % queue.length;
+      (i + dir + queue.length) % queue.length;
     const n = queue[idx];
     if (n) playTrack(n);
   };
   const next = () => step(1);
   const prev = () => {
-    if (progress > 4) ytRef.current?.seekTo(0, true);
+    if (progress > 4 && current) {
+      recRef.current.record(current, "replay", progress, duration);
+      finished.current = false;
+      ytRef.current?.seekTo(0, true);
+    }
     else step(-1);
   };
   nextRef.current = () => {
     if (repeat === "one") {
+      pendingStart.current = "replay";
+      finished.current = false;
       ytRef.current?.seekTo(0, true);
       ytRef.current?.playVideo?.();
     } else next();
@@ -285,21 +325,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
-    navigator.mediaSession.setActionHandler("nexttrack", () => nextRef.current());
+    navigator.mediaSession.setActionHandler("nexttrack", next);
     navigator.mediaSession.setActionHandler("previoustrack", prev);
     navigator.mediaSession.setActionHandler("play", () => {
       wantPlay.current = true;
+      pendingStart.current = "resume";
       keep(true);
       ytRef.current?.playVideo?.();
     });
     navigator.mediaSession.setActionHandler("pause", () => {
       wantPlay.current = false;
+      pendingStart.current = null;
+      if (current) recRef.current.record(current, "pause", progress, duration);
       keep(false);
       ytRef.current?.pauseVideo?.();
       setPlaying(false);
     });
     navigator.mediaSession.setActionHandler("seekto", (d) => {
-      if (typeof d.seekTime === "number") ytRef.current?.seekTo?.(d.seekTime, true);
+      if (typeof d.seekTime === "number") {
+        if (current) recRef.current.record(current, "seek", d.seekTime, duration);
+        ytRef.current?.seekTo?.(d.seekTime, true);
+      }
     });
   });
 
@@ -307,15 +353,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const p = ytRef.current;
     if (!p || !current) return;
     if (playing) {
+      recRef.current.record(current, "pause", progress, duration);
+      pendingStart.current = null;
       wantPlay.current = false;
       keep(false);
       p.pauseVideo();
     } else {
+      pendingStart.current = "resume";
       wantPlay.current = true;
       keep(true);
       p.playVideo();
     }
-    setPlaying(!playing);
   };
 
   const value: Ctx = {
@@ -329,19 +377,28 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     toggle,
     next,
     prev,
-    seek: (s) => ytRef.current?.seekTo(s, true),
+    seek: (s) => {
+      if (current) rec.record(current, "seek", s, duration);
+      ytRef.current?.seekTo(s, true);
+    },
     setVolume: setVol,
     liked,
     isLiked: (id) => liked.some((l) => l.id === id),
-    toggleLike: (t) =>
-      setLiked((l) => (l.some((x) => x.id === t.id) ? l.filter((x) => x.id !== t.id) : [t, ...l])),
+    toggleLike: (t) => {
+      rec.record(t, liked.some((x) => x.id === t.id) ? "unlike" : "like", t.id === current?.id ? progress : 0, t.id === current?.id ? duration : 0);
+      setLiked((l) => (l.some((x) => x.id === t.id) ? l.filter((x) => x.id !== t.id) : [t, ...l]));
+    },
     playlists,
     createPlaylist: (name, tracks = []) => setPlaylists((p) => [...p, { id: crypto.randomUUID(), name, tracks }]),
     deletePlaylist: (id) => setPlaylists((p) => p.filter((x) => x.id !== id)),
-    addToPlaylist: (pid, t) =>
+    addToPlaylist: (pid, t) => {
+      const playlist = playlists.find((x) => x.id === pid);
+      if (!playlist || playlist.tracks.some((x) => x.id === t.id)) return;
+      rec.record(t, "save", t.id === current?.id ? progress : 0, t.id === current?.id ? duration : 0);
       setPlaylists((p) =>
         p.map((x) => (x.id === pid && !x.tracks.some((y) => y.id === t.id) ? { ...x, tracks: [...x.tracks, t] } : x)),
       ),
+    },
     removeFromPlaylist: (pid, tid) =>
       setPlaylists((p) =>
         p.map((x) => (x.id === pid ? { ...x, tracks: x.tracks.filter((y) => y.id !== tid) } : x)),
@@ -356,6 +413,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     toggleShuffle: () => setShuffle((s) => !s),
     repeat,
     cycleRepeat: () => setRepeat((r) => (r === "off" ? "all" : r === "all" ? "one" : "off")),
+    sessionQueue: rec.queue,
+    taste: rec.taste,
+    playEvents: rec.events,
+    catalog: rec.catalog,
+    recommendationsReady: rec.ready,
+    addCandidates: rec.addCandidates,
+    onboardingCount: rec.onboarding,
+    onboard: (track, like) => {
+      rec.onboard(track, like);
+      if (like) setLiked((l) => l.some((t) => t.id === track.id) ? l : [track, ...l]);
+    },
   };
 
   return (
