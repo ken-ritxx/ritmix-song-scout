@@ -400,9 +400,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       ),
     },
     removeFromPlaylist: (pid, tid) =>
-      setPlaylists((p) =>
-        p.map((x) => (x.id === pid ? { ...x, tracks: x.tracks.filter((y) => y.id !== tid) } : x)),
-      ),
+    // Correct:
+   setPlaylists((p) =>
+  p.map((x) => (x.id === pid && !x.tracks.some((y) => y.id === t.id) ? { ...x, tracks: [...x.tracks, t] } : x)) 
+   );
     history,
     addHistory: (q) =>
       setHistory((h) => [q, ...h.filter((x) => x.toLowerCase() !== q.toLowerCase())].slice(0, 15)),
