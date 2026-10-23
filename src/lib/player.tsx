@@ -380,14 +380,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     seek: (s) => {
       if (current) rec.record(current, "seek", s, duration);
       ytRef.current?.seekTo(s, true);
-    },
+    };
     setVolume: setVol,
     liked,
     isLiked: (id) => liked.some((l) => l.id === id),
     toggleLike: (t) => {
       rec.record(t, liked.some((x) => x.id === t.id) ? "unlike" : "like", t.id === current?.id ? progress : 0, t.id === current?.id ? duration : 0);
       setLiked((l) => (l.some((x) => x.id === t.id) ? l.filter((x) => x.id !== t.id) : [t, ...l]));
-    },
+    };
     playlists,
     createPlaylist: (name, tracks = []) => setPlaylists((p) => [...p, { id: crypto.randomUUID(), name, tracks }]),
     deletePlaylist: (id) => setPlaylists((p) => p.filter((x) => x.id !== id)),
@@ -398,7 +398,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setPlaylists((p) =>
         p.map((x) => (x.id === pid && !x.tracks.some((y) => y.id === t.id) ? { ...x, tracks: [...x.tracks, t] } : x)),
       ),
-    },
+    };
     removeFromPlaylist: (pid, tid) =>
     // Correct:
    setPlaylists((p) =>
